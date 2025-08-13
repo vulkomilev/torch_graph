@@ -2,7 +2,7 @@ import os.path as osp
 import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
-from torch.nn import Linear, ReLU, Sequential
+from torch.nn import Linear, ReLU, Sequential,Conv1d,ConvTranspose1d
 from os import listdir
 from os.path import isfile, join
 import re
@@ -95,17 +95,20 @@ class Net(torch.nn.Module):
         nn2 = Sequential(
             Linear(2, 25),
             ReLU(),
-            Linear(25, num_features * 32),
+            Linear(25, 1),
         )
         self.conv1 = NNConv(num_features, 1, nn1, aggr='mean')
-        self.conv_m = NNConv(1, 32, nn2, aggr='mean')
+        self.conv_m = NNConv(1, 1, nn2, aggr='mean')
 
         nn2 = Sequential(
             Linear(2, 25),
             ReLU(),
-            Linear(25, 32 * 64),
+            Linear(25, 1 * 64),
         )
-        self.conv2 = NNConv(32, 64, nn2, aggr='mean')
+        self.cnn = Conv1d(1,1,kernel_size=8)
+        self.cnnT = ConvTranspose1d(1,1,kernel_size=8)
+        self.conv2 = NNConv(1, 64, nn2, aggr='mean')
+
 
         self.fc1 = torch.nn.Linear(64, 128)
         self.fc2 = torch.nn.Linear(128, num_target)
@@ -114,7 +117,13 @@ class Net(torch.nn.Module):
  
 
         data.x = F.elu(self.conv1(data.x, data.edge_index, data.edge_attr))
+
         data.x = F.elu(self.conv_m(data.x, data.edge_index, data.edge_attr))
+ 
+        data.x = F.elu(self.cnn(torch.reshape(data.x, (1,-1))))
+        data.x = F.elu(self.cnnT(torch.reshape(data.x, (1,-1))))
+        data.x = torch.reshape(data.x, (-1,1))
+
         data.x = F.elu(self.conv2(data.x, data.edge_index, data.edge_attr))
 
         x = F.elu(self.fc1(data.x))
