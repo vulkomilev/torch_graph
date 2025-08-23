@@ -11,8 +11,56 @@ from torch_geometric.nn import (
     GraphConv   
 )
 
+class CNNFor(torch.nn.Module):
+    def __init__(self,for_cycles=1,num_features = 1,num_target = 1,local_device = 'cuda:0'):
+        super().__init__()
+
+        self.num_features = num_features
+        self.num_target = num_target
+        self.local_device = local_device
+        self.for_cycles=for_cycles
+        nn1 = Sequential(
+            Linear(2, 25),
+            ReLU(),
+            Linear(25, 1),
+        )
+        nn2 = Sequential(
+            Linear(2, 25),
+            ReLU(),
+            Linear(25, 1),
+        )
+        nn3 = Sequential(
+            Linear(2, 25),
+            ReLU(),
+            Linear(25, 1 * 64),
+        )
+        self.conv1 = NNConv(num_features, 1, nn1, aggr='mean')
+        self.conv_m = NNConv(1, 1, nn2, aggr='mean')
+
+
+        self.cnn = Conv1d(1,1,kernel_size=8)
+        self.cnnT = ConvTranspose1d(1,1,kernel_size=8)
+        self.conv2 = NNConv(1, 64, nn3, aggr='mean')
+
+
+        self.fc1 = torch.nn.Linear(64, 128)
+        self.fc2 = torch.nn.Linear(128, num_target)
+
+    def forward(self, data):
+ 
+
+        data.x = F.elu(self.conv1(data.x, data.edge_index, data.edge_attr))
+        for i in range(self.for_cycles):
+         data.x = F.elu(self.conv_m(data.x, data.edge_index, data.edge_attr))
+
+        data.x = F.elu(self.conv2(data.x, data.edge_index, data.edge_attr))
+
+        x = F.elu(self.fc1(data.x))
+        x = F.dropout(x, training=self.training)
+        return F.elu(self.fc2(x))
+
 class CNN(torch.nn.Module):
-    def __init__(self,num_features = 10,num_target = 10,local_device = 'cuda:0'):
+    def __init__(self,num_features = 1,num_target = 1,local_device = 'cuda:0'):
         super().__init__()
 
         self.num_features = num_features
@@ -145,6 +193,39 @@ class HotEncoding(torch.nn.Module):
  
 
         data.x = F.elu(self.grap_conv(data.x, data.edge_index))
+        data.x = F.elu(self.grap_conv_end(data.x, data.edge_index))
+
+        x = F.elu(self.fc1(data.x))
+        return F.softmax(self.fc2(x))
+
+
+class HotEncodingForLoopForward(torch.nn.Module):
+    
+    def __init__(self,num_features = 10,num_target = 10,local_device = 'cuda:0'):
+        super().__init__()
+
+        self.num_features = num_features
+        self.num_target = num_target
+        self.local_device = local_device
+        
+
+        self.grap_conv_begin = GraphConv(self.num_features, 10, aggr='mean')
+
+        self.grap_conv_middle = GraphConv(self.num_features, 10, aggr='mean')
+        self.grap_conv_end = GraphConv(self.num_features, 10, aggr='mean')
+
+
+        self.fc1 = torch.nn.Linear(10, 128)
+        self.fc2 = torch.nn.Linear(128, self.num_target)
+        
+        self.v1 = torch.tensor( np.array([[1,0,0]]),dtype=torch.float).to(self.local_device)
+    def forward(self, data):
+        data.x = F.elu(self.grap_conv_begin(data.x, data.edge_index))
+        x_last = data.x.clone()
+        for i in range(1):
+            data.x = F.elu(self.grap_conv_middle(data.x, data.edge_index))
+            #print(torch.dot(x_last.flatten(), data.x.flatten()).flatten()/(torch.norm(x_last.flatten())*torch.norm(data.x.flatten())))
+            x_last = data.x.clone()
         data.x = F.elu(self.grap_conv_end(data.x, data.edge_index))
 
         x = F.elu(self.fc1(data.x))
