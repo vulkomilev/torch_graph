@@ -12,7 +12,7 @@ from torch_geometric.nn import (
 )
 
 class CNNFor(torch.nn.Module):
-    def __init__(self,for_cycles=1,num_features = 1,num_target = 1,local_device = 'cuda:0'):
+    def __init__(self,for_cycles=1,num_features = 1,num_target = 1,local_device = 'cuda:0',param_dict={}):
         super().__init__()
 
         self.num_features = num_features
@@ -59,8 +59,8 @@ class CNNFor(torch.nn.Module):
         x = F.dropout(x, training=self.training)
         return F.elu(self.fc2(x))
 
-class CNN(torch.nn.Module):
-    def __init__(self,num_features = 1,num_target = 1,local_device = 'cuda:0'):
+class CNNGlobalNode(torch.nn.Module):
+    def __init__(self,num_features = 1,num_target = 1,local_device = 'cuda:0',param_dict={}):
         super().__init__()
 
         self.num_features = num_features
@@ -110,8 +110,121 @@ class CNN(torch.nn.Module):
         x = F.dropout(x, training=self.training)
         return F.elu(self.fc2(x))
 
+class CNN_Symbolic_Parallel (torch.nn.Module):
+    def __init__(self,num_features = 1,num_target = 1,local_device = 'cuda:0',param_dict={}):
+        super().__init__()
+
+        self.num_features = num_features
+        self.num_target = num_target
+        self.local_device = local_device
+        nn1 = Sequential(
+            Linear(2, 25),
+            ReLU(),
+            Linear(25, 1),
+        )
+        nn2 = Sequential(
+            Linear(2, 25),
+            ReLU(),
+            Linear(25, 1),
+        )
+        nn3 = Sequential(
+            Linear(2, 25),
+            ReLU(),
+            Linear(25, 1 * 64),
+        )
+        self.conv1 = NNConv(num_features, 1, nn1, aggr='mean')
+        self.conv_m = NNConv(1, 1, nn2, aggr='mean')
+
+
+        self.cnn = Conv1d(1,1,kernel_size=8)
+        self.cnnT = ConvTranspose1d(1,1,kernel_size=8)
+        self.conv2 = NNConv(1, 64, nn3, aggr='mean')
+
+
+        self.fc1 = torch.nn.Linear(64, 128)
+        self.fc2 = torch.nn.Linear(128, num_target)
+        self.fc3 = torch.nn.Linear(num_target*2, num_target)
+   
+    def symbolic_function(self,data):
+        for i in range(data.shape[0]):
+            if data[i] > 0:
+                data[i] = 1.0
+        return data
+
+    def forward(self, data):
+ 
+        data_new = self.symbolic_function(data.x.clone())
+        data.x = F.elu(self.conv1(data.x, data.edge_index, data.edge_attr))
+
+        data.x = F.elu(self.conv_m(data.x, data.edge_index, data.edge_attr))
+ 
+        data.x = F.elu(self.cnn(torch.reshape(data.x, (1,-1))))
+        data.x = F.elu(self.cnnT(torch.reshape(data.x, (1,-1))))
+        data.x = torch.reshape(data.x, (-1,1))
+
+        data.x = F.elu(self.conv2(data.x, data.edge_index, data.edge_attr))
+
+        x = F.elu(self.fc1(data.x))
+        x = F.dropout(x, training=self.training)
+        x = F.elu(self.fc2(x))
+        x = torch.concat([x,data_new],dim=1)
+        x = F.elu(self.fc3(x))
+        
+        return x
+
+class CNN(torch.nn.Module):
+    def __init__(self,num_features = 1,num_target = 1,local_device = 'cuda:0',param_dict={}):
+        super().__init__()
+
+        self.num_features = num_features
+        self.num_target = num_target
+        self.local_device = local_device
+        nn1 = Sequential(
+            Linear(2, 25),
+            ReLU(),
+            Linear(25, 1),
+        )
+        nn2 = Sequential(
+            Linear(2, 25),
+            ReLU(),
+            Linear(25, 1),
+        )
+        nn3 = Sequential(
+            Linear(2, 25),
+            ReLU(),
+            Linear(25, 1 * 64),
+        )
+        self.conv1 = NNConv(num_features, 1, nn1, aggr='mean')
+        self.conv_m = NNConv(1, 1, nn2, aggr='mean')
+
+
+        self.cnn = Conv1d(1,1,kernel_size=8)
+        self.cnnT = ConvTranspose1d(1,1,kernel_size=8)
+        self.conv2 = NNConv(1, 64, nn3, aggr='mean')
+
+
+        self.fc1 = torch.nn.Linear(64, 128)
+        self.fc2 = torch.nn.Linear(128, num_target)
+
+    def forward(self, data):
+ 
+        print('data',data.x.shape)
+        data.x = F.elu(self.conv1(data.x, data.edge_index, data.edge_attr))
+
+        data.x = F.elu(self.conv_m(data.x, data.edge_index, data.edge_attr))
+ 
+        data.x = F.elu(self.cnn(torch.reshape(data.x, (1,-1))))
+        data.x = F.elu(self.cnnT(torch.reshape(data.x, (1,-1))))
+        data.x = torch.reshape(data.x, (-1,1))
+
+        data.x = F.elu(self.conv2(data.x, data.edge_index, data.edge_attr))
+
+        x = F.elu(self.fc1(data.x))
+        x = F.dropout(x, training=self.training)
+        return F.elu(self.fc2(x))
+
 class Attention(torch.nn.Module):
-    def __init__(self,num_features = 10,num_target = 10,local_device = 'cuda:0'):
+    def __init__(self,num_features = 10,num_target = 10,local_device = 'cuda:0',param_dict={}):
         super().__init__()
 
         self.num_features = num_features
@@ -173,7 +286,7 @@ class Attention(torch.nn.Module):
 
 class HotEncoding(torch.nn.Module):
     
-    def __init__(self,num_features = 10,num_target = 10,local_device = 'cuda:0'):
+    def __init__(self,num_features = 10,num_target = 10,local_device = 'cuda:0',param_dict={}):
         super().__init__()
 
         self.num_features = num_features
@@ -201,7 +314,7 @@ class HotEncoding(torch.nn.Module):
 
 class HotEncodingForLoopForward(torch.nn.Module):
     
-    def __init__(self,num_features = 10,num_target = 10,local_device = 'cuda:0'):
+    def __init__(self,num_features = 10,num_target = 10,local_device = 'cuda:0',param_dict={}):
         super().__init__()
 
         self.num_features = num_features

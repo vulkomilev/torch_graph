@@ -14,8 +14,40 @@ def one_hot_decode(x):
 
     return x_new
 
+def test_globalNode(epoch,model,loader,TRAIN_EPOCHS,IMAGE_SHOW_TRESHOLD,train_func,device,train_dataset,optimizer,total_metric_min,mlflow,param_dict={}):
+    
+    model.eval()
+    correct = 0
 
-def test(epoch,model,loader,TRAIN_EPOCHS,IMAGE_SHOW_TRESHOLD,train_func,device,train_dataset,optimizer,total_metric_min,mlflow):
+    for data in loader:
+        for epoch_train in range(1, TRAIN_EPOCHS):
+            train_func(epoch_train,train_dataset,optimizer,model,device,None)
+        data = data.to(device)
+        data_1 = copy.deepcopy(data)
+        pred = model(data_1).flatten()
+        cos_sim = torch.dot(pred[:-1*param_dict['hidden_node_count']], data.y.flatten()).flatten()/(torch.norm(pred)*torch.norm(data.y.flatten()))
+     
+        total_metric = 1-cos_sim.cpu().detach().numpy().tolist()[0]
+        correct += total_metric 
+        mlflow.log_metrics({"total_metric": total_metric,"total_metric_min": total_metric_min}  )
+        if total_metric_min > total_metric:
+            total_metric_min = total_metric
+        # if total_metric <= IMAGE_SHOW_TRESHOLD  or epoch > 20:
+        #     figure, axis = plt.subplots(1, 3)
+        #     axis[ 0].imshow(np.rot90(pred.cpu().detach().numpy()[:data.y_shape[0][0]*data.y_shape[0][1]].reshape((data.y_shape[0][0],data.y_shape[0][1])),k=0))
+        #     axis[ 0].set_title("Predicted")
+
+        #     axis[ 1].imshow(data.y.cpu().detach().numpy()[:data.y_shape[0][0]*data.y_shape[0][1]].reshape((data.y_shape[0][0],data.y_shape[0][1])))
+        #     axis[ 1].set_title("True")
+            
+        #     axis[ 2].imshow(data.x[:,:1].cpu().detach().numpy()[:data.x_shape[0][0]*data.x_shape[0][1]].reshape((data.x_shape[0][0],data.x_shape[0][1])))
+        #     axis[ 2].set_title("Input")
+        #     plt.show()
+
+    print('total_metric_min',total_metric_min)
+    return correct / len(loader),total_metric_min
+
+def test(epoch,model,loader,TRAIN_EPOCHS,IMAGE_SHOW_TRESHOLD,train_func,device,train_dataset,optimizer,total_metric_min,mlflow,param_dict={}):
     
     model.eval()
     correct = 0
@@ -48,7 +80,7 @@ def test(epoch,model,loader,TRAIN_EPOCHS,IMAGE_SHOW_TRESHOLD,train_func,device,t
     print('total_metric_min',total_metric_min)
     return correct / len(loader),total_metric_min
 
-def test_one_hot(epoch,model,loader,TRAIN_EPOCHS,IMAGE_SHOW_TRESHOLD,train_func,device,train_dataset,optimizer,total_metric_min,mlflow):
+def test_one_hot(epoch,model,loader,TRAIN_EPOCHS,IMAGE_SHOW_TRESHOLD,train_func,device,train_dataset,optimizer,total_metric_min,mlflow,param_dict={}):
     model.eval()
     correct = 0
 
