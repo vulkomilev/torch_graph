@@ -172,6 +172,57 @@ class CNN_Symbolic_Parallel (torch.nn.Module):
         
         return x
 
+class CNN_with_symbolic_logic(torch.nn.Module):
+    def __init__(self,for_cycles=1,num_features = 1,num_target = 1,local_device = 'cuda:0',param_dict={"symbolic_function":None,"data_size":None}):
+        super().__init__()
+
+        self.num_features = num_features
+        self.num_target = num_target
+        self.local_device = local_device
+        self.for_cycles=for_cycles
+        self.symbolic_function = param_dict["symbolic_function"]
+        self.data_size = param_dict["data_size"]
+        nn1 = Sequential(
+            Linear(2, 25),
+            ReLU(),
+            Linear(25, 1),
+        )
+        nn2 = Sequential(
+            Linear(2, 25),
+            ReLU(),
+            Linear(25, 1),
+        )
+        nn3 = Sequential(
+            Linear(2, 25),
+            ReLU(),
+            Linear(25, 1 * 64),
+        )
+        self.conv1 = NNConv(num_features, 1, nn1, aggr='mean')
+        self.conv_m = NNConv(1, 1, nn2, aggr='mean')
+
+
+        self.cnn = Conv1d(1,1,kernel_size=8)
+        self.cnnT = ConvTranspose1d(1,1,kernel_size=8)
+        self.conv2 = NNConv(1, 64, nn3, aggr='mean')
+
+
+        self.fc1 = torch.nn.Linear(64, 128)
+        self.fc2 = torch.nn.Linear(128, num_target)
+
+    def forward(self, data):
+ 
+
+        data.x = F.elu(self.conv1(data.x, data.edge_index, data.edge_attr))
+        for i in range(self.for_cycles):
+         data.x = F.elu(self.conv_m(data.x, data.edge_index, data.edge_attr))
+         data.x[-self.data_size:] = self.symbolic_function(data.x[-2*self.data_size:-self.data_size])
+
+        data.x = F.elu(self.conv2(data.x, data.edge_index, data.edge_attr))
+
+        x = F.elu(self.fc1(data.x))
+        x = F.dropout(x, training=self.training)
+        return F.elu(self.fc2(x))
+
 class CNN(torch.nn.Module):
     def __init__(self,num_features = 1,num_target = 1,local_device = 'cuda:0',param_dict={}):
         super().__init__()
@@ -207,8 +258,6 @@ class CNN(torch.nn.Module):
         self.fc2 = torch.nn.Linear(128, num_target)
 
     def forward(self, data):
- 
-        print('data',data.x.shape)
         data.x = F.elu(self.conv1(data.x, data.edge_index, data.edge_attr))
 
         data.x = F.elu(self.conv_m(data.x, data.edge_index, data.edge_attr))

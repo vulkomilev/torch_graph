@@ -51,7 +51,6 @@ def test(epoch,model,loader,TRAIN_EPOCHS,IMAGE_SHOW_TRESHOLD,train_func,device,t
     
     model.eval()
     correct = 0
-
     for data in loader:
         for epoch_train in range(1, TRAIN_EPOCHS):
             train_func(epoch_train,train_dataset,optimizer,model,device,None)
